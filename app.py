@@ -3,8 +3,8 @@ import yfinance as yf
 import requests
 import openai
 
-openai.api_key = st.secrets["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"]
-NEWS_API_KEY = st.secrets["9ec01c49764b48708c6b3bc27ac66bb7"]
+openai.api_key = st.secrets["OPENAI_API_KEY"]
+NEWS_API_KEY = st.secrets["NEWS_API_KEY"]
 
 def get_news(stock_name):
     url = f"https://newsapi.org/v2/everything?q={stock_name}&sortBy=publishedAt&apiKey={NEWS_API_KEY}"
