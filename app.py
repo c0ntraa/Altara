@@ -10,10 +10,15 @@ client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 NEWS_API_KEY = st.secrets["NEWS_API_KEY"]
 ASSISTANT_ID = st.secrets["ASSISTANT_ID"]
 
-st.set_page_config(page_title="Welcome to NeuroTrade", page_icon="🧠", layout="wide")
-st.image("neurotrade_logo.png", width=160)
-st.markdown("<h1 style='color:#1E3A8A;'>NeuroTrade</h1>", unsafe_allow_html=True)
-st.markdown("#### Holistic Market Insights You Can Trust")
+# Page config
+st.set_page_config(page_title="Altara", page_icon="💼", layout="wide")
+
+# Custom header styling
+st.markdown(
+    "<h1 style='text-align: center; color: #1E40AF; font-size: 3em;'>Altara</h1>",
+    unsafe_allow_html=True
+)
+st.markdown("<h4 style='text-align: center; color: #334155;'>AI-Powered Financial Insights</h4>", unsafe_allow_html=True)
 st.markdown("---")
 
 def get_news(stock_name):
@@ -32,7 +37,6 @@ def build_prompt(ticker):
     fifty_two_week_low = stock.info.get("fiftyTwoWeekLow", "unknown")
     market_cap = stock.info.get("marketCap", "unknown")
 
-    # Safe rolling average logic
     ma7_series = hist["Close"].rolling(window=7).mean().dropna()
     ma30_series = hist["Close"].rolling(window=30).mean().dropna()
     ma7 = round(ma7_series.iloc[-1], 2) if not ma7_series.empty else "N/A"
@@ -104,20 +108,26 @@ def plot_stock_chart(ticker):
     ax.legend()
     st.pyplot(fig)
 
-# UI
 ticker = st.text_input("Enter a stock symbol (e.g., AAPL, TSLA)")
 
 if st.button("Analyze"):
     if ticker:
-        with st.spinner("Analyzing with NeuroTrade AI..."):
+        with st.spinner("Analyzing with Altara..."):
             prompt = build_prompt(ticker)
             result = ask_assistant(prompt)
-        st.success("✅ AI Analysis Complete")
+        st.success("✅ Analysis Complete")
 
-        st.markdown("### 📊 Stock Chart with Moving Averages")
-        plot_stock_chart(ticker)
+        col1, col2 = st.columns([2, 3])
+        with col1:
+            st.markdown("### 📊 Moving Averages")
+            plot_stock_chart(ticker)
 
-        st.markdown("### 🧠 NeuroTrade Recommendation")
-        st.markdown(result)
+        with col2:
+            st.markdown("### 🧠 Altara Recommendation")
+            st.markdown(result)
+
+        with st.expander("📰 View Recent Headlines"):
+            for headline in get_news(ticker):
+                st.markdown(f"- {headline}")
     else:
         st.warning("Please enter a valid stock symbol.")
