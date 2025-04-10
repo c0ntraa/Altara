@@ -4,21 +4,21 @@ import requests
 from openai import OpenAI
 import matplotlib.pyplot as plt
 import time
+import re
 
 # Initialize OpenAI client
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 NEWS_API_KEY = st.secrets["NEWS_API_KEY"]
 ASSISTANT_ID = st.secrets["ASSISTANT_ID"]
 
-# Page config
-st.set_page_config(page_title="Altara", page_icon="💼", layout="wide")
+st.set_page_config(page_title="Altara", page_icon="📈", layout="wide")
 
-# Custom header styling
-st.markdown(
-    "<h1 style='text-align: center; color: #1E40AF; font-size: 3em;'>Altara</h1>",
-    unsafe_allow_html=True
-)
-st.markdown("<h4 style='text-align: center; color: #334155;'>AI-Powered Financial Insights</h4>", unsafe_allow_html=True)
+st.markdown("""
+    <div style='text-align: center; padding: 20px 0;'>
+        <h1 style='color:#1E40AF; font-size: 3em; margin-bottom: 0;'>Altara</h1>
+        <p style='font-size: 1.2em; color: #334155;'>AI-Powered Market Intelligence</p>
+    </div>
+""", unsafe_allow_html=True)
 st.markdown("---")
 
 def get_news(stock_name):
@@ -108,23 +108,35 @@ def plot_stock_chart(ticker):
     ax.legend()
     st.pyplot(fig)
 
+def clean_response(text):
+    text = re.sub(r"[\*_`$]", "", text)
+    text = re.sub(r"
+{3,}", "
+
+", text)
+    return text.strip()
+
 ticker = st.text_input("Enter a stock symbol (e.g., AAPL, TSLA)")
 
 if st.button("Analyze"):
     if ticker:
-        with st.spinner("Analyzing with Altara..."):
+        with st.spinner("Analyzing with Altara AI..."):
             prompt = build_prompt(ticker)
             result = ask_assistant(prompt)
-        st.success("✅ Analysis Complete")
 
-        col1, col2 = st.columns([2, 3])
-        with col1:
-            st.markdown("### 📊 Moving Averages")
-            plot_stock_chart(ticker)
+        cleaned_result = clean_response(result)
+        styled_result = cleaned_result
+        styled_result = styled_result.replace("Overall Sentiment:", "**<span style='color:#1E40AF;'>Overall Sentiment:</span>**")
+        styled_result = styled_result.replace("Technical Interpretation:", "**<span style='color:#1E40AF;'>Technical Interpretation:</span>**")
+        styled_result = styled_result.replace("News Sentiment:", "**<span style='color:#1E40AF;'>News Sentiment:</span>**")
+        styled_result = styled_result.replace("Recommendation:", "**<span style='color:#1E40AF;'>Recommendation:</span>**")
 
-        with col2:
-            st.markdown("### 🧠 Altara Recommendation")
-            st.markdown(result)
+        st.success("✅ AI Analysis Complete")
+        st.markdown("### 📈 Altara Recommendation")
+        st.markdown(styled_result, unsafe_allow_html=True)
+
+        st.markdown("### 📊 Stock Chart with Moving Averages")
+        plot_stock_chart(ticker)
 
         with st.expander("📰 View Recent Headlines"):
             for headline in get_news(ticker):
