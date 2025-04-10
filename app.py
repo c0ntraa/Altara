@@ -2,15 +2,20 @@ import streamlit as st
 import yfinance as yf
 import requests
 from openai import OpenAI
+import matplotlib.pyplot as plt
 import time
 
+# Initialize OpenAI client
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 NEWS_API_KEY = st.secrets["NEWS_API_KEY"]
-ASSISTANT_ID = st.secrets["ASSISTANT_ID"]  # store your assistant ID here
+ASSISTANT_ID = st.secrets["ASSISTANT_ID"]
 
-st.set_page_config(page_title="NeuroTrade", page_icon="🧠", layout="centered")
-st.title("🧠 NeuroTrade")
-st.markdown("### Your AI-Powered Stock Advisor")
+# Page config with logo
+st.set_page_config(page_title="NeuroTrade", page_icon="🧠", layout="wide")
+st.image("neurotrade_logo.png", width=160)
+st.markdown("<h1 style='color:#1E3A8A;'>NeuroTrade</h1>", unsafe_allow_html=True)
+st.markdown("#### AI-Powered Market Insights You Can Trust")
+st.markdown("---")
 
 def get_news(stock_name):
     url = f"https://newsapi.org/v2/everything?q={stock_name}&sortBy=publishedAt&language=en&apiKey={NEWS_API_KEY}"
@@ -20,61 +25,97 @@ def get_news(stock_name):
 
 def build_prompt(ticker):
     stock = yf.Ticker(ticker)
-    hist = stock.history(period="7d")
+    hist = stock.history(period="1mo")
+
     price = stock.info.get("currentPrice", "unknown")
-    close_prices = [round(p, 2) for p in hist['Close'].tolist()][-3:]
+    volume = stock.info.get("volume", "unknown")
+    fifty_two_week_high = stock.info.get("fiftyTwoWeekHigh", "unknown")
+    fifty_two_week_low = stock.info.get("fiftyTwoWeekLow", "unknown")
+    market_cap = stock.info.get("marketCap", "unknown")
+
+    ma7 = round(hist["Close"].rolling(window=7).mean().dropna().iloc[-1], 2)
+    ma30 = round(hist["Close"].rolling(window=30).mean().dropna().iloc[-1], 2)
+
+    close_prices = hist["Close"].tolist()
+    if len(close_prices) >= 7:
+        pct_change_7d = round(((close_prices[-1] - close_prices[-7]) / close_prices[-7]) * 100, 2)
+    else:
+        pct_change_7d = "N/A"
+
     news = get_news(ticker)
-    
-    # Only include up to 2 short headlines
-    headlines = "- " + "\\n- ".join([n[:80] for n in news[:2]])
+    headlines = "- " + "\n- ".join([n[:100] for n in news[:3]])
 
     return f"""
-Analyze {ticker}.
+You are a financial analyst generating a stock report.
 
-Price: ${price}
-Trend: {close_prices}
-News:
+Ticker: {ticker}
+Current Price: ${price}
+7-Day Moving Avg: ${ma7}
+30-Day Moving Avg: ${ma30}
+7-Day % Change: {pct_change_7d}%
+52-Week High/Low: ${fifty_two_week_high} / ${fifty_two_week_low}
+Volume: {volume}
+Market Cap: {market_cap}
+
+Recent Headlines:
 {headlines}
 
-Respond with Buy, Sell, or Hold and one brief reason.
+Based on this data, provide:
+- An overall sentiment (bullish, bearish, neutral)
+- Technical interpretation (MA, trend)
+- Brief interpretation of the news sentiment
+- A Buy, Sell, or Hold recommendation with reasoning
 """
 
 def ask_assistant(prompt):
     thread = client.beta.threads.create()
-    
-    client.beta.threads.messages.create(
-        thread_id=thread.id,
-        role="user",
-        content=prompt
-    )
+    client.beta.threads.messages.create(thread_id=thread.id, role="user", content=prompt)
+    run = client.beta.threads.runs.create(thread_id=thread.id, assistant_id=ASSISTANT_ID)
 
-    run = client.beta.threads.runs.create(
-        thread_id=thread.id,
-        assistant_id=ASSISTANT_ID,
-    )
-
-    # Wait until run completes
     while True:
         run_status = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
         if run_status.status == "completed":
             break
         elif run_status.status in ["failed", "cancelled", "expired"]:
+            st.error(f"⚠️ Assistant run failed with status: {run_status.status}")
             return "⚠️ Assistant failed to generate a response."
         time.sleep(1)
 
     messages = client.beta.threads.messages.list(thread_id=thread.id)
     return messages.data[0].content[0].text.value
 
-# Streamlit UI
-ticker = st.text_input("Enter a stock symbol (NVDA, AAPL, TSLA)")
+def plot_stock_chart(ticker):
+    stock = yf.Ticker(ticker)
+    hist = stock.history(period="1mo")
+
+    hist["MA7"] = hist["Close"].rolling(window=7).mean()
+    hist["MA30"] = hist["Close"].rolling(window=30).mean()
+
+    fig, ax = plt.subplots()
+    ax.plot(hist.index, hist["Close"], label="Close Price", linewidth=2)
+    ax.plot(hist.index, hist["MA7"], label="7-Day MA", linestyle="--")
+    ax.plot(hist.index, hist["MA30"], label="30-Day MA", linestyle=":")
+    ax.set_title(f"{ticker} - Price & Moving Averages")
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Price (USD)")
+    ax.grid(True)
+    ax.legend()
+    st.pyplot(fig)
+
+# UI
+ticker = st.text_input("Enter a stock symbol (e.g., AAPL, TSLA)")
 
 if st.button("Analyze"):
     if ticker:
-        with st.spinner("Asking NeuroTrade AI..."):
+        with st.spinner("Analyzing with NeuroTrade AI..."):
             prompt = build_prompt(ticker)
             result = ask_assistant(prompt)
-        st.success("Analysis Complete!")
-        st.markdown("### AI Recommendation")
-        st.write(result)
+        st.success("Analysis Complete")
+
+        st.markdown("### 📊 Stock Chart with Moving Averages")
+        plot_stock_chart(ticker)
+
+        st.markdown("### 🧠 NeuroTrade Recommendation")
+        st.markdown(result)
     else:
         st.warning("Please enter a valid stock symbol.")
