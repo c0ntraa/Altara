@@ -116,7 +116,7 @@ def clean_response(text):
 ", text)
     return text.strip()
 
-ticker = st.text_input("Enter a stock symbol (e.g., AAPL, TSLA)")
+ticker = st.text_input("Enter a stock symbol (ex., AAPL, TSLA)")
 
 if st.button("Analyze"):
     if ticker:
