@@ -24,17 +24,20 @@ def build_prompt(ticker):
     price = stock.info.get("currentPrice", "unknown")
     close_prices = [round(p, 2) for p in hist['Close'].tolist()][-3:]
     news = get_news(ticker)
-    headlines = "\\n- " + "\\n- ".join([n[:100] for n in news])
     
+    # Only include up to 2 short headlines
+    headlines = "- " + "\\n- ".join([n[:80] for n in news[:2]])
+
     return f"""
-    Stock: {ticker}
-    Current price: ${price}
-    3-day trend: {close_prices}
-    Recent news headlines:
-    {headlines}
-    
-    Should I Buy, Sell, or Hold? Respond with a short recommendation and brief reasoning.
-    """
+Analyze {ticker}.
+
+Price: ${price}
+Trend: {close_prices}
+News:
+{headlines}
+
+Respond with Buy, Sell, or Hold and one brief reason.
+"""
 
 def ask_assistant(prompt):
     thread = client.beta.threads.create()
