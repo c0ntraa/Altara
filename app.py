@@ -43,10 +43,10 @@ def build_prompt(ticker):
     ma30 = round(ma30_series.iloc[-1], 2) if not ma30_series.empty else "N/A"
 
     close_prices = hist["Close"].tolist()
-    if len(close_prices) >= 7:
-        pct_change_7d = round(((close_prices[-1] - close_prices[-7]) / close_prices[-7]) * 100, 2)
-    else:
-        pct_change_7d = "N/A"
+    pct_change_7d = (
+        round(((close_prices[-1] - close_prices[-7]) / close_prices[-7]) * 100, 2)
+        if len(close_prices) >= 7 else "N/A"
+    )
 
     news = get_news(ticker)
     headlines = "- " + "\n- ".join([n[:100] for n in news[:3]])
@@ -109,12 +109,12 @@ def plot_stock_chart(ticker):
     st.pyplot(fig)
 
 def clean_response(text):
-    import re
-    text = re.sub(r"[\\*_`$]", "", text)
+    text = re.sub(r"[\*_`$]", "", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
-ticker = st.text_input("Enter a stock symbol (ex., AAPL, TSLA)")
+# UI
+ticker = st.text_input("Enter a stock symbol (ex. AAPL, TSLA)")
 
 if st.button("Analyze"):
     if ticker:
@@ -129,15 +129,49 @@ if st.button("Analyze"):
         styled_result = styled_result.replace("News Sentiment:", "**<span style='color:#1E40AF;'>News Sentiment:</span>**")
         styled_result = styled_result.replace("Recommendation:", "**<span style='color:#1E40AF;'>Recommendation:</span>**")
 
+        stock = yf.Ticker(ticker)
+        hist = stock.history(period="1mo")
+
+        price = stock.info.get("currentPrice", "N/A")
+        volume = stock.info.get("volume", "N/A")
+        fifty_two_week_high = stock.info.get("fiftyTwoWeekHigh", "N/A")
+        fifty_two_week_low = stock.info.get("fiftyTwoWeekLow", "N/A")
+        market_cap = stock.info.get("marketCap", "N/A")
+
+        ma7_series = hist["Close"].rolling(window=7).mean().dropna()
+        ma30_series = hist["Close"].rolling(window=30).mean().dropna()
+        ma7 = round(ma7_series.iloc[-1], 2) if not ma7_series.empty else "N/A"
+        ma30 = round(ma30_series.iloc[-1], 2) if not ma30_series.empty else "N/A"
+
+        close_prices = hist["Close"].tolist()
+        pct_change_7d = (
+            round(((close_prices[-1] - close_prices[-7]) / close_prices[-7]) * 100, 2)
+            if len(close_prices) >= 7 else "N/A"
+        )
+
         st.success("✅ AI Analysis Complete")
-        st.markdown("### 📈 Altara Recommendation")
-        st.markdown(styled_result, unsafe_allow_html=True)
 
-        st.markdown("### 📊 Stock Chart with Moving Averages")
-        plot_stock_chart(ticker)
+        col1, col2 = st.columns([1, 2])
 
-        with st.expander("📰 View Recent Headlines"):
-            for headline in get_news(ticker):
-                st.markdown(f"- {headline}")
+        with col1:
+            st.markdown("### 📋 Summary Stats")
+            st.markdown(f"- **Price:** ${price}")
+            st.markdown(f"- **7-Day MA:** {ma7}")
+            st.markdown(f"- **30-Day MA:** {ma30}")
+            st.markdown(f"- **7-Day % Change:** {pct_change_7d}%")
+            st.markdown(f"- **52-Week Range:** ${fifty_two_week_low} - ${fifty_two_week_high}")
+            st.markdown(f"- **Market Cap:** {market_cap:,}" if isinstance(market_cap, int) else f"- **Market Cap:** {market_cap}")
+            st.markdown(f"- **Volume:** {volume:,}" if isinstance(volume, int) else f"- **Volume:** {volume}")
+
+            st.markdown("### 🧠 Altara Recommendation")
+            st.markdown(styled_result, unsafe_allow_html=True)
+
+            with st.expander("📰 View Recent Headlines"):
+                for headline in get_news(ticker):
+                    st.markdown(f"- {headline}")
+
+        with col2:
+            st.markdown("### 📊 Stock Chart with Moving Averages")
+            plot_stock_chart(ticker)
     else:
         st.warning("Please enter a valid stock symbol.")
