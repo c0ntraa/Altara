@@ -66,7 +66,7 @@ def ask_assistant(prompt):
     return messages.data[0].content[0].text.value
 
 # Streamlit UI
-ticker = st.text_input("Enter a stock symbol (e.g., AAPL, TSLA)")
+ticker = st.text_input("Enter a stock symbol (NVDA, AAPL, TSLA)")
 
 if st.button("Analyze"):
     if ticker:
