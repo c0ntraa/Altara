@@ -10,11 +10,10 @@ client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 NEWS_API_KEY = st.secrets["NEWS_API_KEY"]
 ASSISTANT_ID = st.secrets["ASSISTANT_ID"]
 
-# Page config with logo
-st.set_page_config(page_title="NeuroTrade", page_icon="🧠", layout="wide")
+st.set_page_config(page_title="Welcome to NeuroTrade", page_icon="🧠", layout="wide")
 st.image("neurotrade_logo.png", width=160)
 st.markdown("<h1 style='color:#1E3A8A;'>NeuroTrade</h1>", unsafe_allow_html=True)
-st.markdown("#### AI-Powered Market Insights You Can Trust")
+st.markdown("#### Holistic Market Insights You Can Trust")
 st.markdown("---")
 
 def get_news(stock_name):
@@ -33,8 +32,11 @@ def build_prompt(ticker):
     fifty_two_week_low = stock.info.get("fiftyTwoWeekLow", "unknown")
     market_cap = stock.info.get("marketCap", "unknown")
 
-    ma7 = round(hist["Close"].rolling(window=7).mean().dropna().iloc[-1], 2)
-    ma30 = round(hist["Close"].rolling(window=30).mean().dropna().iloc[-1], 2)
+    # Safe rolling average logic
+    ma7_series = hist["Close"].rolling(window=7).mean().dropna()
+    ma30_series = hist["Close"].rolling(window=30).mean().dropna()
+    ma7 = round(ma7_series.iloc[-1], 2) if not ma7_series.empty else "N/A"
+    ma30 = round(ma30_series.iloc[-1], 2) if not ma30_series.empty else "N/A"
 
     close_prices = hist["Close"].tolist()
     if len(close_prices) >= 7:
@@ -50,8 +52,8 @@ You are a financial analyst generating a stock report.
 
 Ticker: {ticker}
 Current Price: ${price}
-7-Day Moving Avg: ${ma7}
-30-Day Moving Avg: ${ma30}
+7-Day Moving Avg: {ma7}
+30-Day Moving Avg: {ma30}
 7-Day % Change: {pct_change_7d}%
 52-Week High/Low: ${fifty_two_week_high} / ${fifty_two_week_low}
 Volume: {volume}
@@ -110,7 +112,7 @@ if st.button("Analyze"):
         with st.spinner("Analyzing with NeuroTrade AI..."):
             prompt = build_prompt(ticker)
             result = ask_assistant(prompt)
-        st.success("Analysis Complete")
+        st.success("✅ AI Analysis Complete")
 
         st.markdown("### 📊 Stock Chart with Moving Averages")
         plot_stock_chart(ticker)
