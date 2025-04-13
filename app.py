@@ -16,33 +16,46 @@ FINNHUB_KEY = st.secrets["FINNHUB_API_KEY"]
 NEWS_API_KEY = st.secrets["NEWS_API_KEY"]
 ASSISTANT_ID = st.secrets["ASSISTANT_ID"]
 
-# --- Styling ---
+# --- Modern Premium Styling ---
 st.markdown("""
 <style>
 html, body, [class*="css"] {
-    background-color: #0D1117;
-    color: #E5E7EB;
+    background-color: #F4F7FA;
+    color: #0A1D37;
     font-family: 'Segoe UI', sans-serif;
 }
 .section {
-    background-color: #1A1C20;
+    background-color: #ffffff;
     padding: 1.5rem;
     border-radius: 1rem;
     margin-bottom: 2rem;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
 }
 h3 {
-    color: #FFD369;
+    color: #1A3C63;
     margin-bottom: 1rem;
 }
 hr {
-    border-top: 1px solid #333;
+    border: none;
+    border-top: 1px solid #D1D5DB;
+    margin: 2rem 0;
+}
+.stButton>button {
+    border: 1px solid #1A3C63;
+    background-color: white;
+    color: #1A3C63;
+}
+.stButton>button:hover {
+    background-color: #E8EEF5;
 }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h1 style='text-align:center;color:#FFD369;'>Altara</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align:center;color:#8B949E;'>AI-Powered Investment Intelligence</p>", unsafe_allow_html=True)
+st.markdown("""
+<h1 style='text-align:center;color:#1A3C63;font-size:3em;'>Altara</h1>
+<p style='text-align:center;color:#6B7280;font-size:1.2em;'>AI-Powered Investment Intelligence</p>
+<hr />
+""", unsafe_allow_html=True)
 
 # --- Helper Functions ---
 def get_finnhub(endpoint, params=None):
