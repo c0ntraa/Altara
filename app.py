@@ -25,7 +25,7 @@ html, body, [class*="css"] {
     font-family: 'Segoe UI', sans-serif;
 }
 .section {
-    background-color: #F4F7FA;
+    background-color: #294873;
     padding: 0.25rem;
     border-radius: 1rem;
     margin-bottom: 2rem;
