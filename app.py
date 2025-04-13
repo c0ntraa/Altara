@@ -3,175 +3,191 @@ import yfinance as yf
 import requests
 from openai import OpenAI
 import matplotlib.pyplot as plt
+import pandas as pd
 import time
 import re
-
-# Initialize OpenAI client
-client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
-NEWS_API_KEY = st.secrets["NEWS_API_KEY"]
-ASSISTANT_ID = st.secrets["ASSISTANT_ID"]
+from matplotlib.dates import DateFormatter
 
 st.set_page_config(page_title="Altara", page_icon="📈", layout="wide")
 
+# API keys
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+FINNHUB_KEY = st.secrets["FINNHUB_API_KEY"]
+NEWS_API_KEY = st.secrets["NEWS_API_KEY"]
+ASSISTANT_ID = st.secrets["ASSISTANT_ID"]
+
+# --- Styling ---
 st.markdown("""
-    <div style='text-align: center; padding: 20px 0;'>
-        <h1 style='color:#1E40AF; font-size: 3em; margin-bottom: 0;'>Altara</h1>
-        <p style='font-size: 1.2em; color: #334155;'>AI-Powered Market Intelligence</p>
-    </div>
+<style>
+html, body, [class*="css"] {
+    background-color: #0D1117;
+    color: #E5E7EB;
+    font-family: 'Segoe UI', sans-serif;
+}
+.section {
+    background-color: #1A1C20;
+    padding: 1.5rem;
+    border-radius: 1rem;
+    margin-bottom: 2rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+h3 {
+    color: #FFD369;
+    margin-bottom: 1rem;
+}
+hr {
+    border-top: 1px solid #333;
+}
+</style>
 """, unsafe_allow_html=True)
-st.markdown("---")
 
-def get_news(stock_name):
-    url = f"https://newsapi.org/v2/everything?q={stock_name}&sortBy=publishedAt&language=en&apiKey={NEWS_API_KEY}"
-    response = requests.get(url)
-    articles = response.json().get("articles", [])[:3]
-    return [a["title"] for a in articles]
+st.markdown("<h1 style='text-align:center;color:#FFD369;'>Altara</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center;color:#8B949E;'>AI-Powered Investment Intelligence</p>", unsafe_allow_html=True)
 
-def build_prompt(ticker):
-    stock = yf.Ticker(ticker)
-    hist = stock.history(period="1mo")
+# --- Helper Functions ---
+def get_finnhub(endpoint, params=None):
+    url = f"https://finnhub.io/api/v1/{endpoint}"
+    params = params or {}
+    params["token"] = FINNHUB_KEY
+    return requests.get(url, params=params).json()
 
-    price = stock.info.get("currentPrice", "unknown")
-    volume = stock.info.get("volume", "unknown")
-    fifty_two_week_high = stock.info.get("fiftyTwoWeekHigh", "unknown")
-    fifty_two_week_low = stock.info.get("fiftyTwoWeekLow", "unknown")
-    market_cap = stock.info.get("marketCap", "unknown")
+def get_analyst_rating(ticker):
+    data = get_finnhub("stock/recommendation", {"symbol": ticker})
+    if not data: return "No analyst ratings available."
+    latest = data[0]
+    return f"Buy: {latest['buy']}, Hold: {latest['hold']}, Sell: {latest['sell']} (as of {latest['period']})"
 
-    ma7_series = hist["Close"].rolling(window=7).mean().dropna()
-    ma30_series = hist["Close"].rolling(window=30).mean().dropna()
-    ma7 = round(ma7_series.iloc[-1], 2) if not ma7_series.empty else "N/A"
-    ma30 = round(ma30_series.iloc[-1], 2) if not ma30_series.empty else "N/A"
+def get_insider_activity(ticker):
+    data = get_finnhub("stock/insider-transactions", {"symbol": ticker})
+    txns = data.get("data", [])
+    if not isinstance(txns, list) or not txns:
+        return "No insider activity reported."
+    buys = [d for d in txns if d.get("transactionType") == "P - Purchase"]
+    sells = [d for d in txns if d.get("transactionType") == "S - Sale"]
+    return f"Purchases: {len(buys)}, Sales: {len(sells)} (last 3 months)"
 
-    close_prices = hist["Close"].tolist()
-    pct_change_7d = (
-        round(((close_prices[-1] - close_prices[-7]) / close_prices[-7]) * 100, 2)
-        if len(close_prices) >= 7 else "N/A"
-    )
+def get_sentiment(ticker):
+    data = get_finnhub("news-sentiment", {"symbol": ticker})
+    score = data.get("companyNewsScore")
+    return f"{round(score, 2)}" if score else "N/A"
 
-    news = get_news(ticker)
-    headlines = "- " + "\n- ".join([n[:100] for n in news[:3]])
-
-    return f"""
-You are a financial analyst generating a stock report.
-
-Ticker: {ticker}
-Current Price: ${price}
-7-Day Moving Avg: {ma7}
-30-Day Moving Avg: {ma30}
-7-Day % Change: {pct_change_7d}%
-52-Week High/Low: ${fifty_two_week_high} / ${fifty_two_week_low}
-Volume: {volume}
-Market Cap: {market_cap}
-
-Recent Headlines:
-{headlines}
-
-Based on this data, provide:
-- An overall sentiment (bullish, bearish, neutral)
-- Technical interpretation (MA, trend)
-- Brief interpretation of the news sentiment
-- A Buy, Sell, or Hold recommendation with reasoning
-"""
+def get_news(ticker):
+    url = f"https://newsapi.org/v2/everything?q={ticker}&sortBy=publishedAt&language=en&pageSize=10&apiKey={NEWS_API_KEY}"
+    articles = requests.get(url).json().get("articles", [])
+    relevant = [a["title"] for a in articles if ticker.upper() in a["title"].upper()]
+    return relevant[:3] if relevant else [a["title"] for a in articles[:3]]
 
 def ask_assistant(prompt):
     thread = client.beta.threads.create()
     client.beta.threads.messages.create(thread_id=thread.id, role="user", content=prompt)
     run = client.beta.threads.runs.create(thread_id=thread.id, assistant_id=ASSISTANT_ID)
-
     while True:
-        run_status = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
-        if run_status.status == "completed":
-            break
-        elif run_status.status in ["failed", "cancelled", "expired"]:
-            st.error(f"⚠️ Assistant run failed with status: {run_status.status}")
-            return "⚠️ Assistant failed to generate a response."
+        status = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id).status
+        if status == "completed": break
+        elif status in ["failed", "cancelled", "expired"]:
+            return "⚠️ Assistant failed."
         time.sleep(1)
+    msg = client.beta.threads.messages.list(thread_id=thread.id).data[0]
+    return msg.content[0].text.value.strip()
 
-    messages = client.beta.threads.messages.list(thread_id=thread.id)
-    return messages.data[0].content[0].text.value
-
-def plot_stock_chart(ticker):
-    stock = yf.Ticker(ticker)
-    hist = stock.history(period="1mo")
-
-    hist["MA7"] = hist["Close"].rolling(window=7).mean()
-    hist["MA30"] = hist["Close"].rolling(window=30).mean()
-
-    fig, ax = plt.subplots()
-    ax.plot(hist.index, hist["Close"], label="Close Price", linewidth=2)
-    ax.plot(hist.index, hist["MA7"], label="7-Day MA", linestyle="--")
-    ax.plot(hist.index, hist["MA30"], label="30-Day MA", linestyle=":")
-    ax.set_title(f"{ticker} - Price & Moving Averages")
-    ax.set_xlabel("Date")
-    ax.set_ylabel("Price (USD)")
+def tech_chart(hist):
+    hist["MA7"] = hist["Close"].rolling(7).mean()
+    hist["MA30"] = hist["Close"].rolling(30).mean()
+    fig, ax = plt.subplots(figsize=(6, 3.5))
+    ax.plot(hist.index, hist["Close"], label="Close", linewidth=2)
+    ax.plot(hist.index, hist["MA7"], label="7D MA", linestyle="--")
+    ax.plot(hist.index, hist["MA30"], label="30D MA", linestyle=":")
+    ax.set_title("📊 Technical Chart", color="white")
     ax.grid(True)
     ax.legend()
+    ax.xaxis.set_major_formatter(DateFormatter("%b %d"))
+    fig.patch.set_facecolor("#0D1117")
+    ax.set_facecolor("#0D1117")
+    ax.tick_params(colors="white")
+    ax.title.set_color("white")
     st.pyplot(fig)
 
-def clean_response(text):
-    text = re.sub(r"[\*_`$]", "", text)
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    return text.strip()
+def summary_panel(info):
+    st.markdown("<div class='section'>", unsafe_allow_html=True)
+    st.markdown("### 📋 Stock Summary")
+    cols = st.columns(2)
+    cols[0].markdown(f"**Price:** ${info.get('currentPrice','N/A')}")
+    cols[0].markdown(f"**Volume:** {info.get('volume','N/A')}")
+    cols[0].markdown(f"**P/E Ratio:** {info.get('trailingPE','N/A')}")
+    cols[0].markdown(f"**Market Cap:** {info.get('marketCap','N/A')}")
+    cols[1].markdown(f"**52W High:** ${info.get('fiftyTwoWeekHigh','N/A')}")
+    cols[1].markdown(f"**52W Low:** ${info.get('fiftyTwoWeekLow','N/A')}")
+    st.markdown("</div>", unsafe_allow_html=True)
 
-# UI
-ticker = st.text_input("Enter a stock symbol (ex. AAPL, TSLA)")
+# --- UI Input ---
+st.markdown("<div class='section'>", unsafe_allow_html=True)
+st.markdown("### 📈 Analyze a Stock")
+ticker = st.text_input("Enter Stock Symbol (ex. AAPL, TSLA)").upper()
+st.markdown("</div>", unsafe_allow_html=True)
 
-if st.button("Analyze"):
-    if ticker:
-        with st.spinner("Analyzing with Altara AI..."):
-            prompt = build_prompt(ticker)
-            result = ask_assistant(prompt)
-
-        cleaned_result = clean_response(result)
-        styled_result = cleaned_result
-        styled_result = styled_result.replace("Overall Sentiment:", "**<span style='color:#1E40AF;'>Overall Sentiment:</span>**")
-        styled_result = styled_result.replace("Technical Interpretation:", "**<span style='color:#1E40AF;'>Technical Interpretation:</span>**")
-        styled_result = styled_result.replace("News Sentiment:", "**<span style='color:#1E40AF;'>News Sentiment:</span>**")
-        styled_result = styled_result.replace("Recommendation:", "**<span style='color:#1E40AF;'>Recommendation:</span>**")
-
-        stock = yf.Ticker(ticker)
-        hist = stock.history(period="1mo")
-
-        price = stock.info.get("currentPrice", "N/A")
-        volume = stock.info.get("volume", "N/A")
-        fifty_two_week_high = stock.info.get("fiftyTwoWeekHigh", "N/A")
-        fifty_two_week_low = stock.info.get("fiftyTwoWeekLow", "N/A")
-        market_cap = stock.info.get("marketCap", "N/A")
-
-        ma7_series = hist["Close"].rolling(window=7).mean().dropna()
-        ma30_series = hist["Close"].rolling(window=30).mean().dropna()
-        ma7 = round(ma7_series.iloc[-1], 2) if not ma7_series.empty else "N/A"
-        ma30 = round(ma30_series.iloc[-1], 2) if not ma30_series.empty else "N/A"
-
-        close_prices = hist["Close"].tolist()
-        pct_change_7d = (
-            round(((close_prices[-1] - close_prices[-7]) / close_prices[-7]) * 100, 2)
-            if len(close_prices) >= 7 else "N/A"
-        )
-
-        st.success("✅ AI Analysis Complete")
-
-        col1, col2 = st.columns([1, 2])
-
-        with col1:
-            st.markdown("### 📋 Summary Stats")
-            st.markdown(f"- **Price:** ${price}")
-            st.markdown(f"- **7-Day MA:** {ma7}")
-            st.markdown(f"- **30-Day MA:** {ma30}")
-            st.markdown(f"- **7-Day % Change:** {pct_change_7d}%")
-            st.markdown(f"- **52-Week Range:** ${fifty_two_week_low} - ${fifty_two_week_high}")
-            st.markdown(f"- **Market Cap:** {market_cap:,}" if isinstance(market_cap, int) else f"- **Market Cap:** {market_cap}")
-            st.markdown(f"- **Volume:** {volume:,}" if isinstance(volume, int) else f"- **Volume:** {volume}")
-
-            st.markdown("### 🧠 Altara Recommendation")
-            st.markdown(styled_result, unsafe_allow_html=True)
-
-            with st.expander("📰 View Recent Headlines"):
-                for headline in get_news(ticker):
-                    st.markdown(f"- {headline}")
-
-        with col2:
-            st.markdown("### 📊 Stock Chart with Moving Averages")
-            plot_stock_chart(ticker)
+# --- Main Action ---
+if st.button("Run Analysis") and ticker:
+    stock = yf.Ticker(ticker)
+    hist = stock.history(period="2mo")
+    if hist.empty:
+        st.error("Invalid ticker or no data.")
     else:
-        st.warning("Please enter a valid stock symbol.")
+        info = stock.info
+        ma7 = hist["Close"].rolling(7).mean().dropna().iloc[-1]
+        ma30 = hist["Close"].rolling(30).mean().dropna().iloc[-1]
+        pct = round(((hist["Close"].iloc[-1] - hist["Close"].iloc[-7]) / hist["Close"].iloc[-7]) * 100, 2)
+
+        rating = get_analyst_rating(ticker)
+        insider = get_insider_activity(ticker)
+        sentiment = get_sentiment(ticker)
+        news = get_news(ticker)
+
+        prompt = f"""
+You are a financial AI assistant generating a clear investment recommendation for a stock based on the following structured input:
+
+Stock: {ticker}
+Price: ${info.get("currentPrice","N/A")}
+7D MA: {ma7:.2f}, 30D MA: {ma30:.2f}
+7D % Change: {pct}
+P/E Ratio: {info.get("trailingPE", "N/A")}
+Market Cap: {info.get("marketCap", "N/A")}
+52W High: {info.get("fiftyTwoWeekHigh", "N/A")}
+52W Low: {info.get("fiftyTwoWeekLow", "N/A")}
+Volume: {info.get("volume", "N/A")}
+
+Analyst Ratings: {rating}
+Insider Activity: {insider}
+Sentiment Score: {sentiment}
+
+Recent News:
+- {news[0] if len(news) > 0 else ""}
+- {news[1] if len(news) > 1 else ""}
+- {news[2] if len(news) > 2 else ""}
+
+Please provide a structured analysis with these 5 clearly labeled sections (use markdown formatting with bold headings):
+
+1. **📊 Overall Sentiment**
+2. **📉 Technical Analysis**
+3. **🧠 Analyst + Insider Summary**
+4. **📰 News Impact**
+5. **✅ Final Recommendation**
+
+Each section should be concise, visually readable, and formatted in bullet points where possible.
+"""
+
+        with st.spinner("Analyzing with Altara..."):
+            response = ask_assistant(prompt)
+
+        summary_panel(info)
+
+        st.markdown("<div class='section'>", unsafe_allow_html=True)
+        st.markdown("### 💬 Altara Recommendation")
+        st.markdown(response)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        with st.expander("📊 View Technical Chart"):
+            tech_chart(hist)
+
+        with st.expander("🗞️ View Recent Headlines"):
+            for h in news:
+                st.markdown(f"- {h}")
