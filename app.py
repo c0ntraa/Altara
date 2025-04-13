@@ -53,7 +53,7 @@ hr {
 
 st.markdown("""
 <h1 style='text-align:center;color:#1A3C63;font-size:3em;'>Altara</h1>
-<p style='text-align:center;color:#6B7280;font-size:1.2em;'>AI-Powered Investment Intelligence</p>
+<p style='text-align:center;color:#6B7280;font-size:1.2em;'>AI-Powered Market Intelligence</p>
 <hr />
 """, unsafe_allow_html=True)
 
