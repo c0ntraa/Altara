@@ -26,7 +26,7 @@ html, body, [class*="css"] {
 }
 .section {
     background-color: #0A1D37;
-    padding: 1.5rem;
+    padding: 0.5rem;
     border-radius: 1rem;
     margin-bottom: 2rem;
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
